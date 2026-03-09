@@ -1,0 +1,58 @@
+# Data directories - ALL data files
+data/
+sound_data/
+**/data/
+**/sound_data/
+
+# Audio files - any location, any extension
+*.wav
+*.mp3
+*.flac
+*.aac
+*.ogg
+
+# Annotation files
+*.json
+*.txt
+*.csv
+
+# Compressed files
+*.zip
+*.tar
+*.gz
+*.rar
+*.7z
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Virtual Environment - MUST BE AT BOTTOM
+.venv/
+**/.venv/
+.venv/**
+**/.venv/**
+.venv/*
+**/.venv/*
+.venv
+**/.venv
+ENV/
+env/
