@@ -4,6 +4,9 @@ sound_data/
 **/data/
 **/sound_data/
 
+#Open files - any location, any extension
+*.tmp
+
 # Audio files - any location, any extension
 *.wav
 *.mp3
@@ -56,3 +59,4 @@ Thumbs.db
 **/.venv
 ENV/
 env/
+~$iteUp SW-ML-5.docx
