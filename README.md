@@ -9,7 +9,7 @@
 
 **NeoScreen** is a multimodal AI framework that combines **clinical data** and **respiratory sound analysis** to detect neonatal respiratory distress in low-resource settings. Developed as a machine learning project at Makerere University (Group SW-ML-5).
 
-| **What it does**                                | **Why it matters**                               |
+| **What it does**                          | **Why it matters**                         |
 | ----------------------------------------------- | ------------------------------------------------ |
 | Predicts respiratory distress risk in newborns  | 47% of under-5 deaths occur in the first 28 days |
 | Analyzes grunting, stridor, and apnea sounds    | 98% of these deaths happen in LMICs              |
@@ -31,15 +31,15 @@
 
 NeoScreen fuses two complementary data modalities:
 
-| 📊 **Tabular Path** | 🎵 **Audio Path**  |
-| ------------------- | ------------------ |
-| Gestational Age     | Grunting detection |
-| Birth Weight        | Stridor detection  |
-| Respiratory Rate    | Apnea detection    |
-| SpO₂                | MFCC features      |
-| Apgar scores        | Harmonic Ratio     |
-| Temperature         | CNN embeddings     |
-| Heart Rate          | (ResNet-50, 256-d) |
+| 📊**Tabular Path** | 🎵**Audio Path** |
+| ------------------------ | ---------------------- |
+| Gestational Age          | Grunting detection     |
+| Birth Weight             | Stridor detection      |
+| Respiratory Rate         | Apnea detection        |
+| SpO₂                    | MFCC features          |
+| Apgar scores             | Harmonic Ratio         |
+| Temperature              | CNN embeddings         |
+| Heart Rate               | (ResNet-50, 256-d)     |
 
 **Fusion Strategy:** Early fusion with XGBoost achieves **AUC = 0.91**
 
@@ -47,11 +47,11 @@ NeoScreen fuses two complementary data modalities:
 
 ## 🏆 **Key Results**
 
-| Metric      | Tabular Only | **Early Fusion (Ours)** | Improvement |
-| ----------- | ------------ | ----------------------- | ----------- |
-| **AUC**     | 0.86         | **0.91**                | **+5%**     |
-| Sensitivity | 82%          | **88%**                 | +6%         |
-| Specificity | 88%          | **92%**                 | +4%         |
+| Metric        | Tabular Only | **Early Fusion (Ours)** | Improvement   |
+| ------------- | ------------ | ----------------------------- | ------------- |
+| **AUC** | 0.86         | **0.91**                | **+5%** |
+| Sensitivity   | 82%          | **88%**                 | +6%           |
+| Specificity   | 88%          | **92%**                 | +4%           |
 
 ### **Key Findings**
 
@@ -67,16 +67,20 @@ The datasets used in this project are too large for GitHub. Download them from t
 ### **1. Synthetic Neonatal Dataset**
 
 - **Source:** Electric Sheep Africa (Hugging Face)
-- **Link:** [https://huggingface.co/datasets/electricsheepafrica/synthetic-neonatal-birth-outcomes-vitals-WHO-0-28days](https://huggingface.co/datasets/electricsheepafrica/synthetic-neonatal-birth-outcomes-vitals-WHO-0-28days)
+- **Link:** [Hugging Face Link](https://huggingface.co/datasets/electricsheepafrica/synthetic-neonatal-birth-outcomes-vitals-WHO-0-28days)
 - **Contents:** 30,000 synthetic neonatal records with clinical variables
 
 ### **2. Respiratory Sound Datasets**
 
-| Dataset         | Size             | Contents                     | Download Link                                                                  |
-| --------------- | ---------------- | ---------------------------- | ------------------------------------------------------------------------------ |
-| **ICBHI 2017**  | 920 recordings   | Crackles, wheezes            | [Official Link](https://bhichallenge.med.auth.gr/ICBHI_2017_Challenge)         |
-| **HLS-CMDS v2** | 535 recordings   | Wheezing, crackles, rhonchi  | [Github Link](https://github.com/Torabiy/HLS-CMDS/tree/main)                   |
-| **SPRSound**    | 2,683 recordings | Pediatric respiratory sounds | [Github Link](https://github.com/SJTU-YONGFU-RESEARCH-GRP/SPRSound/tree/main)  |
+| Dataset               | Size             | Contents                     | Download Link                                                              |
+| --------------------- | ---------------- | ---------------------------- | -------------------------------------------------------------------------- |
+| **ICBHI 2017**  | 920 recordings   | Crackles, wheezes            | [Official Link](https://bhichallenge.med.auth.gr/ICBHI_2017_Challenge)        |
+| **HLS-CMDS v2** | 535 recordings   | Wheezing, crackles, rhonchi  | [Github Link](https://github.com/Torabiy/HLS-CMDS/tree/main)                  |
+| **SPRSound**    | 2,683 recordings | Pediatric respiratory sounds | [Github Link](https://github.com/SJTU-YONGFU-RESEARCH-GRP/SPRSound/tree/main) |
+
+### **3. Exploratory Data Analysis (EDA)**
+
+Link to Canva: [Canva Link](https://www.canva.com/design/DAHCgBPE0Yw/Wya2uqUE7rnH28qKojfnfA/edit?utm_content=DAHCgBPE0Yw&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton)
 
 ---
 
