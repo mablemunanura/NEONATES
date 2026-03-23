@@ -1,0 +1,72 @@
+# Data directories - ALL data files
+data/
+sound_data/
+**/data/
+**/sound_data/
+
+#Open files - any location, any extension
+*.tmp
+
+# Audio files - any location, any extension
+*.wav
+*.mp3
+*.flac
+*.aac
+*.ogg
+
+# Annotation files
+*.json
+*.txt
+*.csv
+
+#environment files
+*.env
+
+# Compressed files
+*.zip
+*.tar
+*.gz
+*.rar
+*.7z
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+#venv
+pyg_env/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Virtual Environment - MUST BE AT BOTTOM
+.venv/
+**/.venv/
+.venv/**
+**/.venv/**
+.venv/*
+**/.venv/*
+.venv
+**/.venv
+ENV/
+env/
+~$iteUp SW-ML-5.docx
