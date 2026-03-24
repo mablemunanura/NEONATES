@@ -9,10 +9,12 @@ import warnings
 warnings.filterwarnings('ignore')
 
 class AudioFeatureExtractor:
+
     # Extract audio features for respiratory sound analysis
     
     def __init__(self, sr=4000, n_mfcc=13):
         # Initialize feature extractor
+        
         # Parameters:
         # sr : int (Target sample rate)
         # n_mfcc : int (Number of MFCC coefficients to extract)
@@ -22,7 +24,9 @@ class AudioFeatureExtractor:
         print(f"AudioFeatureExtractor initialized with sr={sr}, n_mfcc={n_mfcc}")
     
     def extract_features_simple(self, audio_path):
+
         # Simplified feature extraction - robust for all files
+        
         try:
             # Load audio
             y, sr = librosa.load(audio_path, sr=self.sr)
@@ -72,13 +76,14 @@ class AudioFeatureExtractor:
             return None
     
     def extract_batch(self, file_list, output_csv=None):
-        # Extract features from multiple audio files
-        
+        """
+        Extract features from multiple audio files
+        """
         all_features = []
         success_count = 0
         fail_count = 0
         
-        print(f"\n Processing {len(file_list)} files...")
+        print(f"\nProcessing {len(file_list)} files...")
         
         for i, file_path in enumerate(file_list):
             if i % 10 == 0:
@@ -94,7 +99,7 @@ class AudioFeatureExtractor:
             else:
                 fail_count += 1
         
-        print(f"\n Completed: {success_count} successful, {fail_count} failed")
+        print(f"\nCompleted: {success_count} successful, {fail_count} failed")
         
         df = pd.DataFrame(all_features)
         
