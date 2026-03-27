@@ -19,6 +19,12 @@ sound_data/
 *.txt
 *.csv
 
+#models
+*.h5
+*.pkl
+*.pth
+*.pt
+
 #environment files
 *.env
 
