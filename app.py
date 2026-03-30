@@ -115,20 +115,20 @@ with tab1:
     # Clinical Section
     with col2:
         st.subheader("💊 Clinical Features")
-        st.caption("Enter neonatal clinical measurements")
+        st.caption("Actual neonatal clinical data")
         
-        # Define feature names and ranges
+        # Define feature names and ranges from neonatal_processed.csv
         feature_names = [
-            ("Heart Rate (bpm)", 100, 160),
-            ("Respiratory Rate (breaths/min)", 30, 60),
-            ("Temperature (°C)", 36.5, 37.5),
-            ("Oxygen Saturation (%)", 95, 100),
-            ("Systolic BP (mmHg)", 50, 80),
-            ("Diastolic BP (mmHg)", 30, 50),
-            ("Glucose (mg/dL)", 40, 150),
-            ("WBC Count (×10^9/L)", 5, 20),
-            ("Apgar Score (0-10)", 7, 10),
-            ("Birth Weight (kg)", 2.5, 4.0),
+            ("Gestational Age (weeks)", 30, 42),
+            ("Birth Weight (g)", 1000, 4500),
+            ("Head Circumference (cm)", 25, 40),
+            ("Delivery Mode (0=vaginal, 1=cesarean)", 0, 1),
+            ("Apgar Score 1min (0-10)", 0, 10),
+            ("Apgar Score 5min (0-10)", 0, 10),
+            ("Temperature (°C)", 35.5, 38.0),
+            ("Heart Rate (bpm)", 100, 180),
+            ("Respiratory Rate (breaths/min)", 30, 80),
+            ("SpO2 (%)", 90, 100),
         ]
         
         clinical_values = []
