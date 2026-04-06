@@ -19,6 +19,15 @@ sound_data/
 *.txt
 *.csv
 
+#models
+*.h5
+*.pkl
+*.pth
+*.pt
+
+#environment files
+*.env
+
 # Compressed files
 *.zip
 *.tar
@@ -35,6 +44,7 @@ __pycache__/
 .coverage
 htmlcov/
 
+
 # IDE
 .vscode/
 .idea/
@@ -47,6 +57,12 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+#venv
+pyg_env/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
 
 # Virtual Environment - MUST BE AT BOTTOM
 .venv/
