@@ -98,17 +98,23 @@ with tab1:
         st.subheader("🎵 Audio Data")
         st.caption("Mel-spectrogram input (128×500)")
         
-        audio_mode = st.radio("Audio Input", ["Generate Sample", "Upload File"], key="audio_mode")
+        audio_mode = st.radio("Audio Input", ["Generate Sample", "Upload File", "Record Audio"], key="audio_mode")
         
         if audio_mode == "Generate Sample":
             if st.button("🎲 Generate Sample Audio", use_container_width=True):
                 audio_input = np.zeros((1, 1, 128, 500), dtype=np.float32)
                 st.session_state.audio_data = audio_input
                 st.success("✓ Audio sample generated")
-        else:
+        elif audio_mode == "Upload File":
             audio_file = st.file_uploader("Upload audio file", type=["wav", "mp3", "ogg"])
             if audio_file:
                 st.success("✓ Audio file uploaded")
+                audio_input = np.zeros((1, 1, 128, 500), dtype=np.float32)
+                st.session_state.audio_data = audio_input
+        else:
+            audio_data = st.audio_input("🎤 Record audio")
+            if audio_data:
+                st.success("✓ Audio recorded")
                 audio_input = np.zeros((1, 1, 128, 500), dtype=np.float32)
                 st.session_state.audio_data = audio_input
     
@@ -139,18 +145,30 @@ with tab1:
         for i, (feature_name, min_val, max_val) in enumerate(feature_names):
             col_idx = i % 2
             with input_cols[col_idx]:
-                # Number input for direct entry
-                val = st.number_input(
-                    feature_name,
-                    min_value=float(min_val),
-                    max_value=float(max_val),
-                    value=float((min_val + max_val) / 2),
-                    step=0.1,
-                    key=f"clinical_{i}"
-                )
-                # Normalize to 0-1
-                normalized = (val - min_val) / (max_val - min_val)
-                clinical_values.append(normalized)
+                # Special handling for Delivery Mode (categorical)
+                if i == 3:  # Delivery Mode is the 4th feature
+                    delivery_mode = st.selectbox(
+                        feature_name,
+                        options=[0, 1],
+                        format_func=lambda x: "Vaginal (0)" if x == 0 else "Cesarean (1)",
+                        index=0,
+                        key=f"clinical_{i}"
+                    )
+                    normalized = float(delivery_mode)
+                    clinical_values.append(normalized)
+                else:
+                    # Number input for continuous features
+                    val = st.number_input(
+                        feature_name,
+                        min_value=float(min_val),
+                        max_value=float(max_val),
+                        value=float((min_val + max_val) / 2),
+                        step=0.1,
+                        key=f"clinical_{i}"
+                    )
+                    # Normalize to 0-1
+                    normalized = (val - min_val) / (max_val - min_val)
+                    clinical_values.append(normalized)
         
         clinical_input = np.array([clinical_values], dtype=np.float32)
         
