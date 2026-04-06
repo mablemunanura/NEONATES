@@ -13,6 +13,7 @@ from datetime import datetime
 import librosa
 import io
 import traceback
+from sklearn.preprocessing import normalize
 
 # ==================== Load Models ====================
 def load_models():
@@ -118,6 +119,124 @@ def load_audio(file_path):
         return None
 
 
+def normalize_clinical_features(ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
+    """Normalize clinical features to 0-1 range based on neonatal reference values"""
+    # Define min/max for each feature based on neonatal ranges
+    feature_ranges = {
+        'ga': (28, 42),           # Gestational age: 28-42 weeks
+        'bw': (1500, 4500),       # Birth weight: 1.5-4.5 kg
+        'hc': (28, 38),           # Head circumference: 28-38 cm
+        'dm': (0, 1),             # Delivery mode: 0=vaginal, 1=cesarean
+        'apgar1': (0, 10),        # Apgar 1min: 0-10
+        'apgar5': (0, 10),        # Apgar 5min: 0-10
+        'temp': (35.5, 38.5),     # Temperature: 35.5-38.5°C
+        'hr': (100, 180),         # Heart rate: 100-180 bpm
+        'rr': (30, 70),           # Respiratory rate: 30-70 bpm
+        'spo2': (90, 100)         # SpO2: 90-100%
+    }
+    
+    # Normalize each feature
+    normalized = []
+    values = [ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2]
+    keys = ['ga', 'bw', 'hc', 'dm', 'apgar1', 'apgar5', 'temp', 'hr', 'rr', 'spo2']
+    
+    for val, key in zip(values, keys):
+        min_val, max_val = feature_ranges[key]
+        # Clip to range and normalize to [0, 1]
+        normalized_val = (val - min_val) / (max_val - min_val)
+        normalized_val = max(0, min(1, normalized_val))  # Clip to [0, 1]
+        normalized.append(normalized_val)
+    
+    return np.array([normalized], dtype=np.float32)
+
+
+def get_risk_factors(ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
+    """Identify which clinical features are outside normal ranges (risk factors)"""
+    normal_ranges = {
+        'Gestational Age': (37, 40, 'weeks', 'older is better'),
+        'Birth Weight': (2500, 4000, 'g', 'heavier is better'),
+        'Head Circumference': (32, 36, 'cm', 'normal range'),
+        'Apgar 1min': (7, 10, 'score', 'higher is better'),
+        'Apgar 5min': (8, 10, 'score', 'higher is better'),
+        'Temperature': (36.5, 37.5, '°C', 'normal range'),
+        'Heart Rate': (120, 160, 'bpm', 'normal range'),
+        'Respiratory Rate': (40, 60, 'bpm', 'normal range'),
+        'SpO2': (95, 100, '%', 'higher is better'),
+    }
+    
+    values = [ga, bw, hc, apgar1, apgar5, temp, hr, rr, spo2]
+    labels = list(normal_ranges.keys())
+    
+    risk_factors = []
+    protective_factors = []
+    
+    for label, val in zip(labels, values):
+        if label == 'Delivery Mode':
+            continue
+            
+        min_norm, max_norm, unit, direction = normal_ranges[label]
+        
+        if val < min_norm:
+            severity = 'HIGH' if val < min_norm * 0.85 else 'MEDIUM'
+            risk_factors.append({
+                'feature': label,
+                'value': val,
+                'unit': unit,
+                'status': f'LOW ({severity})',
+                'ideal': f'{min_norm}-{max_norm} {unit}'
+            })
+        elif val > max_norm:
+            severity = 'HIGH' if val > max_norm * 1.15 else 'MEDIUM'
+            risk_factors.append({
+                'feature': label,
+                'value': val,
+                'unit': unit,
+                'status': f'HIGH ({severity})',
+                'ideal': f'{min_norm}-{max_norm} {unit}'
+            })
+        else:
+            protective_factors.append({
+                'feature': label,
+                'value': val,
+                'unit': unit,
+                'status': '✓ Normal',
+                'ideal': f'{min_norm}-{max_norm} {unit}'
+            })
+    
+    return risk_factors, protective_factors
+
+
+def generate_explanation(audio_pred, clinical_pred, fusion_pred, audio_status, risk_factors, protective_factors):
+    """Generate AI-friendly explanation of prediction"""
+    explanations = []
+    
+    # Audio explanation
+    if audio_status == "OK":
+        audio_risk = "abnormalities" if audio_pred > 0.6 else "normal features"
+        explanations.append(f"🎵 <b>Audio:</b> Model detected {audio_risk} in cry pattern (confidence: {abs(audio_pred - 0.5) * 2 * 100:.0f}%)")
+    else:
+        explanations.append(f"🎵 <b>Audio:</b> {audio_status}")
+    
+    # Clinical explanation
+    if risk_factors:
+        risk_text = ", ".join([f"{rf['feature']} ({rf['value']} {rf['unit']})" for rf in risk_factors[:3]])
+        explanations.append(f"💊 <b>Clinical Risk Factors:</b> {risk_text}")
+    
+    if protective_factors:
+        prot_text = ", ".join([f"{pf['feature']}" for pf in protective_factors[:2]])
+        explanations.append(f"✓ <b>Protective Factors:</b> {prot_text}")
+    
+    # Fusion explanation
+    if fusion_pred >= 0.6:
+        explanations.append(f"⚠️ <b>Combined Assessment:</b> Multiple concerning factors detected")
+    elif fusion_pred >= 0.5:
+        explanations.append(f"⚠️ <b>Combined Assessment:</b> Moderate concerns warrant monitoring")
+    else:
+        explanations.append(f"✓ <b>Combined Assessment:</b> No major concerns, normal parameters")
+    
+    return explanations
+
+
 # ==================== Prediction Function ====================
 def predict(audio_input, ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
     """
@@ -133,6 +252,7 @@ def predict(audio_input, ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
             audio_tensor = np.random.randn(1, 1, 128, 500).astype(np.float32) * 0.1
             audio_pred = 0.5
             audio_info = f"⚠️ Using fallback audio (reason: {audio_msg})"
+            audio_status = "FALLBACK"
         else:
             # Get audio prediction
             with torch.no_grad():
@@ -142,33 +262,48 @@ def predict(audio_input, ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
                 audio_out = audio_out.flatten()[0]  # Flatten and take first element
                 audio_pred = torch.sigmoid(audio_out).item()
             audio_info = audio_msg
+            audio_status = "OK"
         
-        # Prepare clinical features
-        clinical_features = np.array([
-            [ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2]
-        ], dtype=np.float32)
+        print(f"[AUDIO] Status: {audio_status}, Pred: {audio_pred:.4f}")
+        
+        # Prepare and normalize clinical features
+        clinical_features = normalize_clinical_features(ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2)
+        
+        print(f"[CLINICAL] Normalized features: {clinical_features[0]}")
+        print(f"[CLINICAL] Feature values: GA={ga}, BW={bw}, HC={hc}, DM={dm}, APGAR1={apgar1}, APGAR5={apgar5}, TEMP={temp}, HR={hr}, RR={rr}, SPO2={spo2}")
         
         # Get clinical prediction
+        clinical_status = "✓ Using Clinical Model"
+        clinical_pred = 0.5  # Default value
         try:
             # Handle both sklearn models and dicts
             if hasattr(elm_model, 'predict'):
                 clinical_pred = elm_model.predict(clinical_features)[0]
             elif isinstance(elm_model, dict) and 'predict' in elm_model:
                 clinical_pred = elm_model['predict'](clinical_features)[0]
-            else:
-                # Fallback: random prediction
-                clinical_pred = 0.5
             
             clinical_pred = float(clinical_pred)  # Ensure it's a Python float
+            # Ensure it's in [0, 1] range
+            clinical_pred = max(0, min(1, clinical_pred))
         except Exception as e:
             clinical_pred = 0.5
-            print(f"Clinical model error: {e}")
+            clinical_status = f"❌ Error: {type(e).__name__}"
+            print(f"[CLINICAL] Exception: {e}")
+            print(f"[CLINICAL] elm_model type: {type(elm_model)}")
+        
+        print(f"[CLINICAL] Status: {clinical_status}, Pred: {clinical_pred:.4f}")
         
         # Fusion: 70% audio + 30% clinical
         audio_weight = config.get("audio_weight", 0.7)
         clinical_weight = config.get("clinical_weight", 0.3)
         
         fusion_pred = (audio_weight * audio_pred) + (clinical_weight * clinical_pred)
+        
+        print(f"[FUSION] Audio ({audio_weight:.1%} * {audio_pred:.4f}) + Clinical ({clinical_weight:.1%} * {clinical_pred:.4f}) = {fusion_pred:.4f}")
+        
+        # Generate explainability
+        risk_factors, protective_factors = get_risk_factors(ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2)
+        explanations = generate_explanation(audio_pred, clinical_pred, fusion_pred, audio_status, risk_factors, protective_factors)
         
         # Classify
         if fusion_pred >= 0.5:
@@ -179,6 +314,24 @@ def predict(audio_input, ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
             risk_class = "results-low-risk"
         
         confidence = abs(fusion_pred - 0.5) * 2 * 100
+        
+        # Build explanation section
+        explanation_html = "<br>".join(explanations)
+        
+        # Build risk factors list
+        risk_factors_html = ""
+        if risk_factors:
+            risk_factors_html = "<h4 style='color: #d32f2f; margin: 10px 0 5px 0;'>⚠️ Concerning Factors:</h4><ul style='margin: 5px 0; padding-left: 20px;'>"
+            for rf in risk_factors:
+                risk_factors_html += f"<li><b>{rf['feature']}:</b> {rf['value']} {rf['unit']} ({rf['status']}) - expected: {rf['ideal']}</li>"
+            risk_factors_html += "</ul>"
+        
+        protective_factors_html = ""
+        if protective_factors:
+            protective_factors_html = "<h4 style='color: #388e3c; margin: 10px 0 5px 0;'>✓ Normal Factors:</h4><ul style='margin: 5px 0; padding-left: 20px;'>"
+            for pf in protective_factors[:5]:  # Show top 5
+                protective_factors_html += f"<li><b>{pf['feature']}:</b> {pf['value']} {pf['unit']}</li>"
+            protective_factors_html += "</ul>"
         
         # Format results with new styling
         results = f"""
@@ -195,21 +348,39 @@ def predict(audio_input, ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
                     <div class="metric-value">{clinical_pred:.1%}</div>
                 </div>
                 <div class="metric-box">
-                    <div class="metric-label">🔀 Fusion Score</div>
-                    <div class="metric-value">{fusion_pred:.1%}</div>
+                    <div class="metric-label">📊 Weights</div>
+                    <div class="metric-value">Audio {audio_weight:.0%} + Clinical {clinical_weight:.0%}</div>
                 </div>
                 <div class="metric-box">
-                    <div class="metric-label">📈 Confidence</div>
-                    <div class="metric-value">{confidence:.0f}%</div>
+                    <div class="metric-label">🔀 Fusion Score</div>
+                    <div class="metric-value">{fusion_pred:.1%}</div>
                 </div>
             </div>
             
             <hr style="border: none; border-top: 1px solid rgba(0,0,0,0.1); margin: 15px 0;">
             
-            <h3 style="margin-top: 15px; margin-bottom: 10px;">📋 Processing Status:</h3>
+            <h3 style="margin-top: 15px; margin-bottom: 10px;">🤖 AI Explanation:</h3>
+            <div style="background: rgba(0,0,0,0.02); padding: 12px; border-left: 4px solid #1976d2; border-radius: 4px; font-size: 0.95em; line-height: 1.6;">
+                {explanation_html}
+            </div>
+            
+            {risk_factors_html}
+            {protective_factors_html}
+            
+            <hr style="border: none; border-top: 1px solid rgba(0,0,0,0.1); margin: 15px 0;">
+            
+            <h3 style="margin-top: 15px; margin-bottom: 10px;">🔍 Technical Details:</h3>
+            <div style="background: #f5f5f5; padding: 10px; border-radius: 5px; font-size: 0.9em; font-family: monospace;">
+                <div style="margin-top: 5px;"><b>Fusion Calculation:</b></div>
+                <div style="margin-left: 10px;">= ({audio_weight:.0%} × {audio_pred:.4f}) + ({clinical_weight:.0%} × {clinical_pred:.4f})</div>
+                <div style="margin-left: 10px;">= {audio_weight * audio_pred:.4f} + {clinical_weight * clinical_pred:.4f}</div>
+                <div style="margin-left: 10px;"><b>= {fusion_pred:.4f}</b></div>
+            </div>
+            
+            <hr style="border: none; border-top: 1px solid rgba(0,0,0,0.1); margin: 15px 0;">
+            
+            <h3 style="margin-top: 15px; margin-bottom: 10px;">📋 Assessment Time:</h3>
             <ul style="margin: 10px 0; padding-left: 20px;">
-                <li><b>Audio:</b> {audio_info}</li>
-                <li><b>Clinical:</b> ✓ Received ({10} features)</li>
                 <li><b>Time:</b> {datetime.now().strftime('%H:%M:%S')}</li>
             </ul>
         </div>
