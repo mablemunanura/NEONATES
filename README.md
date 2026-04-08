@@ -109,7 +109,7 @@ python -m venv .venv
 source .venv/bin/activate
 
 # 4. Install dependencies
-pip install -r dependencies.txt
+pip install -r requirements.txt
 
 # 5. Download datasets (see Dataset Access section above)NEONATES/
 # Place them in the correct folder structure

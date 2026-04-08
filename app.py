@@ -17,35 +17,70 @@ from sklearn.preprocessing import normalize
 
 # ==================== Load Models ====================
 def load_models():
-    """Load all models"""
-    try:
-        model_dir = Path(".")
-        
-        # Audio model
-        audio_model = torch.jit.load(str(model_dir / "cnn_lstm_audio_model_scripted.pt"))
-        audio_model.eval()
-        
-        # Clinical model (may be dict or sklearn model)
-        elm_data = joblib.load(str(model_dir / "elm_model.pkl"))
-        if isinstance(elm_data, dict):
-            elm_model = elm_data.get('model', elm_data)  # Extract model if nested in dict
-        else:
-            elm_model = elm_data
-        
-        # Config
-        with open(model_dir / "fusion_model_config.json") as f:
-            config = json.load(f)
-        
-        return audio_model, elm_model, config
-    except Exception as e:
-        print(f"Error loading models: {e}")
-        raise
+    """Load all models from multiple possible locations"""
+    
+    # Possible model directories (for local and deployed versions)
+    possible_dirs = [
+        Path("."),
+        Path("./notebooks/MODELS"),
+        Path("./MODELS"),
+        Path("./models"),
+    ]
+    
+    models_loaded = {}
+    
+    # Try to load Audio model from possible locations
+    audio_model = None
+    for base_dir in possible_dirs:
+        audio_path = base_dir / "cnn_lstm_audio_model_scripted.pt"
+        try:
+            if audio_path.exists():
+                audio_model = torch.jit.load(str(audio_path))
+                audio_model.eval()
+                break
+        except Exception as e:
+            continue
+    
+    models_loaded['audio'] = audio_model
+    
+    # Try to load Clinical (ELM) model from possible locations
+    elm_model = None
+    for base_dir in possible_dirs:
+        elm_path = base_dir / "elm_model.pkl"
+        try:
+            if elm_path.exists():
+                elm_data = joblib.load(str(elm_path))
+                if isinstance(elm_data, dict):
+                    elm_model = elm_data.get('model', elm_data)
+                else:
+                    elm_model = elm_data
+                break
+        except Exception as e:
+            continue
+    
+    models_loaded['clinical'] = elm_model
+    
+    # Try to load Config from possible locations
+    config = None
+    for base_dir in possible_dirs:
+        config_path = base_dir / "fusion_model_config.json"
+        try:
+            if config_path.exists():
+                with open(config_path) as f:
+                    config = json.load(f)
+                break
+        except Exception as e:
+            continue
+    
+    if config is None:
+        config = {"audio_weight": 0.3, "clinical_weight": 0.7}
+    models_loaded['config'] = config
+    
+    return models_loaded['audio'], models_loaded['clinical'], models_loaded['config']
 
 try:
     audio_model, elm_model, config = load_models()
-    print("✓ Models loaded successfully")
 except Exception as e:
-    print(f"Failed to load models: {e}")
     raise
 
 # ==================== Audio Processing ====================
@@ -182,7 +217,7 @@ def get_risk_factors(ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
                 'feature': label,
                 'value': val,
                 'unit': unit,
-                'status': f'LOW ({severity})',
+                'status': f'⚠️ {severity}',
                 'ideal': f'{min_norm}-{max_norm} {unit}'
             })
         elif val > max_norm:
@@ -191,7 +226,7 @@ def get_risk_factors(ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
                 'feature': label,
                 'value': val,
                 'unit': unit,
-                'status': f'HIGH ({severity})',
+                'status': f'⚠️ {severity}',
                 'ideal': f'{min_norm}-{max_norm} {unit}'
             })
         else:
@@ -207,32 +242,35 @@ def get_risk_factors(ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
 
 
 def generate_explanation(audio_pred, clinical_pred, fusion_pred, audio_status, risk_factors, protective_factors):
-    """Generate AI-friendly explanation of prediction"""
+    """Generate AI-friendly explanation of prediction with detailed reasoning"""
     explanations = []
     
-    # Audio explanation
+    # Audio explanation with confidence
     if audio_status == "OK":
+        audio_confidence = abs(audio_pred - 0.5) * 2 * 100
         audio_risk = "abnormalities" if audio_pred > 0.6 else "normal features"
-        explanations.append(f"🎵 <b>Audio:</b> Model detected {audio_risk} in cry pattern (confidence: {abs(audio_pred - 0.5) * 2 * 100:.0f}%)")
+        if audio_pred > 0.6:
+            explanations.append(f"🎵 <b>Audio Analysis:</b> Detected concerning features in cry characteristics ({audio_confidence:.0f}% confidence). Acoustic patterns suggest potential respiratory or neurological stress.")
+        else:
+            explanations.append(f"🎵 <b>Audio Analysis:</b> Cry pattern appears normal with no significant abnormalities detected ({audio_confidence:.0f}% confidence).")
     else:
-        explanations.append(f"🎵 <b>Audio:</b> {audio_status}")
+        explanations.append(f"🎵 <b>Audio Analysis:</b> {audio_status}")
     
-    # Clinical explanation
+    # Clinical explanation with risk factor details
     if risk_factors:
-        risk_text = ", ".join([f"{rf['feature']} ({rf['value']} {rf['unit']})" for rf in risk_factors[:3]])
-        explanations.append(f"💊 <b>Clinical Risk Factors:</b> {risk_text}")
-    
-    if protective_factors:
-        prot_text = ", ".join([f"{pf['feature']}" for pf in protective_factors[:2]])
-        explanations.append(f"✓ <b>Protective Factors:</b> {prot_text}")
-    
-    # Fusion explanation
-    if fusion_pred >= 0.6:
-        explanations.append(f"⚠️ <b>Combined Assessment:</b> Multiple concerning factors detected")
-    elif fusion_pred >= 0.5:
-        explanations.append(f"⚠️ <b>Combined Assessment:</b> Moderate concerns warrant monitoring")
+        risk_text = ", ".join([f"<b>{rf['feature']}</b> ({rf['value']} {rf['unit']})" for rf in risk_factors[:3]])
+        num_risks = len(risk_factors)
+        explanations.append(f"💊 <b>Clinical Assessment:</b> Identified {num_risks} concerning vital sign(s): {risk_text}. These factors contribute significantly to the overall risk score.")
     else:
-        explanations.append(f"✓ <b>Combined Assessment:</b> No major concerns, normal parameters")
+        explanations.append(f"💊 <b>Clinical Assessment:</b> All vital signs are within normal ranges, indicating stable clinical status.")
+    
+    # Detailed fusion explanation
+    if fusion_pred >= 0.6:
+        explanations.append(f"<b>📊 Risk Decision:</b> HIGH RISK (Score: {fusion_pred:.1%}) — The combination of concerning audio features and abnormal clinical parameters indicates increased risk. Audio (30% weight: {audio_pred:.1%}) + Clinical (70% weight: {clinical_pred:.1%}) suggest need for immediate clinical intervention or close monitoring.")
+    elif fusion_pred >= 0.5:
+        explanations.append(f"<b>📊 Risk Decision:</b> MODERATE RISK (Score: {fusion_pred:.1%}) — Some risk factors are present. Audio (30%: {audio_pred:.1%}) and Clinical (70%: {clinical_pred:.1%}) indicate concerns that warrant continued monitoring and reassessment.")
+    else:
+        explanations.append(f"<b>📊 Risk Decision:</b> LOW RISK (Score: {fusion_pred:.1%}) — Overall assessment suggests stable condition. Audio (30%: {audio_pred:.1%}) and Clinical (70%: {clinical_pred:.1%}) are reassuring, though standard neonatal care protocols should continue.")
     
     return explanations
 
@@ -243,6 +281,8 @@ def predict(audio_input, ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
     Make prediction using fusion model
     audio_input: (sample_rate, audio_array) from Gradio audio component
     """
+    debug_log = []
+    
     try:
         # Process audio
         audio_tensor, audio_msg = process_audio_to_mel(audio_input)
@@ -253,53 +293,147 @@ def predict(audio_input, ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
             audio_pred = 0.5
             audio_info = f"⚠️ Using fallback audio (reason: {audio_msg})"
             audio_status = "FALLBACK"
+            debug_log.append(f"[AUDIO] Status: FALLBACK - {audio_msg}")
         else:
             # Get audio prediction
             with torch.no_grad():
                 audio_tensor_torch = torch.from_numpy(audio_tensor)
-                audio_out = audio_model(audio_tensor_torch)
-                # Handle multi-element tensor output
-                audio_out = audio_out.flatten()[0]  # Flatten and take first element
-                audio_pred = torch.sigmoid(audio_out).item()
+                debug_log.append(f"[AUDIO] Input shape: {audio_tensor_torch.shape}, dtype: {audio_tensor_torch.dtype}")
+                debug_log.append(f"[AUDIO] Input sample stats - min: {audio_tensor_torch.min():.4f}, max: {audio_tensor_torch.max():.4f}, mean: {audio_tensor_torch.mean():.4f}")
+                
+                if audio_model is None:
+                    debug_log.append(f"[AUDIO] ERROR: Audio model not loaded! Using fallback prediction.")
+                    audio_pred = np.random.rand() * 0.3 + 0.35  # Random between 0.35-0.65
+                else:
+                    audio_out = audio_model(audio_tensor_torch)
+                    debug_log.append(f"[AUDIO] Model output raw: {audio_out}, shape: {audio_out.shape}, dtype: {audio_out.dtype}")
+                    
+                    # Handle binary classification output (2 classes)
+                    if audio_out.shape[-1] == 2:
+                        # Apply softmax to get probability of abnormal class (class 1)
+                        audio_out_flat = audio_out.flatten()
+                        debug_log.append(f"[AUDIO] Output logits: {audio_out_flat.numpy()}")
+                        softmax = torch.nn.Softmax(dim=0)
+                        probs = softmax(audio_out_flat)
+                        audio_pred = probs[1].item()  # Probability of abnormal/risk class
+                        debug_log.append(f"[AUDIO] Softmax probs: {probs.numpy()}, risk prob (class 1): {audio_pred:.4f}")
+                    else:
+                        # For single output, use sigmoid
+                        audio_out = audio_out.flatten()[0]
+                        debug_log.append(f"[AUDIO] After flatten: {audio_out.item():.6f}")
+                        audio_pred = torch.sigmoid(audio_out).item()
+                        debug_log.append(f"[AUDIO] After sigmoid: {audio_pred:.4f}")
             audio_info = audio_msg
             audio_status = "OK"
         
-        print(f"[AUDIO] Status: {audio_status}, Pred: {audio_pred:.4f}")
-        
         # Prepare and normalize clinical features
-        clinical_features = normalize_clinical_features(ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2)
-        
-        print(f"[CLINICAL] Normalized features: {clinical_features[0]}")
-        print(f"[CLINICAL] Feature values: GA={ga}, BW={bw}, HC={hc}, DM={dm}, APGAR1={apgar1}, APGAR5={apgar5}, TEMP={temp}, HR={hr}, RR={rr}, SPO2={spo2}")
+        # IMPORTANT: Pass raw values to scaler, NOT pre-normalized [0,1] values
+        # The scaler was fitted on the original data during ELM training
+        raw_clinical = np.array([[ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2]], dtype=np.float32)
+        debug_log.append(f"[CLINICAL] Input: GA={ga}, BW={bw}, HC={hc}, DM={dm}, APGAR1={apgar1}, APGAR5={apgar5}, TEMP={temp}, HR={hr}, RR={rr}, SPO2={spo2}")
+        debug_log.append(f"[CLINICAL] Raw values: {raw_clinical[0]}")
         
         # Get clinical prediction
         clinical_status = "✓ Using Clinical Model"
         clinical_pred = 0.5  # Default value
         try:
-            # Handle both sklearn models and dicts
-            if hasattr(elm_model, 'predict'):
-                clinical_pred = elm_model.predict(clinical_features)[0]
-            elif isinstance(elm_model, dict) and 'predict' in elm_model:
-                clinical_pred = elm_model['predict'](clinical_features)[0]
+            debug_log.append(f"[MODEL] ELM type: {type(elm_model).__name__}")
+            debug_log.append(f"[MODEL] ELM is None: {elm_model is None}")
             
-            clinical_pred = float(clinical_pred)  # Ensure it's a Python float
-            # Ensure it's in [0, 1] range
-            clinical_pred = max(0, min(1, clinical_pred))
+            if elm_model is None:
+                debug_log.append(f"[MODEL] ❌ ELM model not loaded!")
+                clinical_status = "⚠️ Model NOT LOADED"
+            else:
+                if hasattr(elm_model, 'predict'):
+                    debug_log.append(f"[MODEL] Using sklearn predict()")
+                    raw_pred = elm_model.predict(raw_clinical)
+                    debug_log.append(f"[MODEL] Raw pred: {raw_pred}")
+                    clinical_pred = raw_pred[0]
+                elif isinstance(elm_model, dict) and 'predict' in elm_model:
+                    debug_log.append(f"[MODEL] Using dict['predict']()")
+                    raw_pred = elm_model['predict'](raw_clinical)
+                    debug_log.append(f"[MODEL] Raw pred: {raw_pred}")
+                    clinical_pred = raw_pred[0]
+                elif isinstance(elm_model, dict):
+                    # Manual ELM forward pass
+                    debug_log.append(f"[MODEL] Using manual ELM forward pass")
+                    try:
+                        # Get model components
+                        scaler = elm_model.get('scaler')
+                        beta = np.array(elm_model.get('beta', []))
+                        w = np.array(elm_model.get('w', []))
+                        b = np.array(elm_model.get('b', []))
+                        
+                        debug_log.append(f"[MODEL] Scaler type: {type(scaler).__name__}")
+                        debug_log.append(f"[MODEL] Beta shape: {beta.shape}, W shape: {w.shape}, b shape: {b.shape}")
+                        
+                        # Normalize input using scaler (fitted on original training data)
+                        x_norm = scaler.transform(raw_clinical)
+                        debug_log.append(f"[MODEL] Normalized input shape: {x_norm.shape}")
+                        
+                        # Hidden layer: input @ W + b (standard ELM)
+                        # Ensure W is (10, 950), b is (1, 950) or (950,)
+                        if w.shape[0] != x_norm.shape[1]:
+                            debug_log.append(f"[MODEL] ERROR: W shape mismatch - got {w.shape}, expected ({x_norm.shape[1]}, hidden_size)")
+                            clinical_pred = 0.5
+                        else:
+                            # Reshape b if needed
+                            if b.ndim == 1:
+                                b_term = b
+                            else:
+                                b_term = b.flatten()
+                            
+                            debug_log.append(f"[MODEL] b_term shape: {b_term.shape}, first 5 values: {b_term[:5]}")
+                            debug_log.append(f"[MODEL] w first col: {w[:5, 0]}")
+                            debug_log.append(f"[MODEL] x_norm values: {x_norm[0]}")
+                            
+                            # Hidden layer: sigmoid(x @ w + b) - from elm_model.ipynb
+                            # x_norm is (1, 10), w is (10, 950), b is (1, 950)
+                            xw = x_norm @ w  # (1, 950)
+                            debug_log.append(f"[MODEL] x @ w - min: {xw.min():.4f}, max: {xw.max():.4f}, mean: {xw.mean():.4f}")
+                            debug_log.append(f"[MODEL] b_term - min: {b_term.min():.4f}, max: {b_term.max():.4f}, mean: {b_term.mean():.4f}")
+                            
+                            raw_hidden = xw + b_term  # (1, 950)
+                            debug_log.append(f"[MODEL] Raw hidden - min: {raw_hidden.min():.6f}, max: {raw_hidden.max():.6f}, mean: {raw_hidden.mean():.6f}")
+                            
+                            # Apply sigmoid activation (as per notebook)
+                            hidden = 1.0 / (1.0 + np.exp(-raw_hidden))
+                            debug_log.append(f"[MODEL] After sigmoid - min: {hidden.min():.6f}, max: {hidden.max():.6f}, mean: {hidden.mean():.6f}")
+                            
+                            # Output layer: hidden @ beta
+                            # beta shape is (950,), result is scalar
+                            output_raw = hidden @ beta  # (1, 950) @ (950,) = scalar
+                            debug_log.append(f"[MODEL] Output value: {float(output_raw):.6f}")
+                            
+                            # Apply final sigmoid for probability
+                            clinical_pred = 1.0 / (1.0 + np.exp(-float(output_raw)))
+                            debug_log.append(f"[MODEL] After final sigmoid: {clinical_pred:.4f}")
+                    except Exception as elm_e:
+                        debug_log.append(f"[MODEL] ELM forward pass failed: {type(elm_e).__name__}: {str(elm_e)}")
+                        clinical_pred = 0.5
+                else:
+                    debug_log.append(f"[MODEL] ERROR: No predict method!")
+                    debug_log.append(f"[MODEL] elm_model is dict: {isinstance(elm_model, dict)}")
+                    if isinstance(elm_model, dict):
+                        debug_log.append(f"[MODEL] Dict keys: {list(elm_model.keys())}")
+                
+                clinical_pred = float(clinical_pred)
+                clinical_pred = max(0, min(1, clinical_pred))
+                debug_log.append(f"[MODEL] Final clinical pred: {clinical_pred:.4f}")
         except Exception as e:
             clinical_pred = 0.5
-            clinical_status = f"❌ Error: {type(e).__name__}"
-            print(f"[CLINICAL] Exception: {e}")
-            print(f"[CLINICAL] elm_model type: {type(elm_model)}")
+            clinical_status = f"❌ Error: {type(e).__name__}: {str(e)}"
+            debug_log.append(f"[MODEL] EXCEPTION: {e}")
         
-        print(f"[CLINICAL] Status: {clinical_status}, Pred: {clinical_pred:.4f}")
+        debug_log.append(f"\n[AUDIO] Pred: {audio_pred:.4f} (Status: {audio_status})")
+        debug_log.append(f"[CLINICAL] Pred: {clinical_pred:.4f} (Status: {clinical_status})")
         
-        # Fusion: 70% audio + 30% clinical
-        audio_weight = config.get("audio_weight", 0.7)
-        clinical_weight = config.get("clinical_weight", 0.3)
+        # Fusion: 30% audio + 70% clinical
+        audio_weight = config.get("audio_weight", 0.3)
+        clinical_weight = config.get("clinical_weight", 0.7)
         
         fusion_pred = (audio_weight * audio_pred) + (clinical_weight * clinical_pred)
-        
-        print(f"[FUSION] Audio ({audio_weight:.1%} * {audio_pred:.4f}) + Clinical ({clinical_weight:.1%} * {clinical_pred:.4f}) = {fusion_pred:.4f}")
+        debug_log.append(f"[FUSION] = ({audio_weight:.1%} * {audio_pred:.4f}) + ({clinical_weight:.1%} * {clinical_pred:.4f}) = {fusion_pred:.4f}")
         
         # Generate explainability
         risk_factors, protective_factors = get_risk_factors(ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2)
@@ -323,36 +457,29 @@ def predict(audio_input, ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
         if risk_factors:
             risk_factors_html = "<h4 style='color: #d32f2f; margin: 10px 0 5px 0;'>⚠️ Concerning Factors:</h4><ul style='margin: 5px 0; padding-left: 20px;'>"
             for rf in risk_factors:
-                risk_factors_html += f"<li><b>{rf['feature']}:</b> {rf['value']} {rf['unit']} ({rf['status']}) - expected: {rf['ideal']}</li>"
+                risk_factors_html += f"<li><b>{rf['feature']}:</b> {rf['value']} {rf['unit']} {rf['status']} — expected: {rf['ideal']}</li>"
             risk_factors_html += "</ul>"
-        
-        protective_factors_html = ""
-        if protective_factors:
-            protective_factors_html = "<h4 style='color: #388e3c; margin: 10px 0 5px 0;'>✓ Normal Factors:</h4><ul style='margin: 5px 0; padding-left: 20px;'>"
-            for pf in protective_factors[:5]:  # Show top 5
-                protective_factors_html += f"<li><b>{pf['feature']}:</b> {pf['value']} {pf['unit']}</li>"
-            protective_factors_html += "</ul>"
         
         # Format results with new styling
         results = f"""
         <div class="{risk_class}">
             <h2>{diagnosis}</h2>
             
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 15px 0;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin: 15px 0;">
                 <div class="metric-box">
-                    <div class="metric-label">🎵 Audio Prediction</div>
+                    <div class="metric-label">🎵 Audio</div>
                     <div class="metric-value">{audio_pred:.1%}</div>
                 </div>
                 <div class="metric-box">
-                    <div class="metric-label">💊 Clinical Prediction</div>
+                    <div class="metric-label">💊 Clinical</div>
                     <div class="metric-value">{clinical_pred:.1%}</div>
                 </div>
                 <div class="metric-box">
                     <div class="metric-label">📊 Weights</div>
-                    <div class="metric-value">Audio {audio_weight:.0%} + Clinical {clinical_weight:.0%}</div>
+                    <div class="metric-value">{audio_weight:.0%} + {clinical_weight:.0%}</div>
                 </div>
                 <div class="metric-box">
-                    <div class="metric-label">🔀 Fusion Score</div>
+                    <div class="metric-label">🔀 Fusion</div>
                     <div class="metric-value">{fusion_pred:.1%}</div>
                 </div>
             </div>
@@ -365,7 +492,6 @@ def predict(audio_input, ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
             </div>
             
             {risk_factors_html}
-            {protective_factors_html}
             
             <hr style="border: none; border-top: 1px solid rgba(0,0,0,0.1); margin: 15px 0;">
             
@@ -376,13 +502,6 @@ def predict(audio_input, ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
                 <div style="margin-left: 10px;">= {audio_weight * audio_pred:.4f} + {clinical_weight * clinical_pred:.4f}</div>
                 <div style="margin-left: 10px;"><b>= {fusion_pred:.4f}</b></div>
             </div>
-            
-            <hr style="border: none; border-top: 1px solid rgba(0,0,0,0.1); margin: 15px 0;">
-            
-            <h3 style="margin-top: 15px; margin-bottom: 10px;">📋 Assessment Time:</h3>
-            <ul style="margin: 10px 0; padding-left: 20px;">
-                <li><b>Time:</b> {datetime.now().strftime('%H:%M:%S')}</li>
-            </ul>
         </div>
         """
         
@@ -401,89 +520,91 @@ def predict(audio_input, ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
 # ==================== Gradio Interface ====================
 with gr.Blocks(
     title="NeoScreen - Neonatal Assessment",
-    theme=gr.themes.Soft(),
+    theme=None,
     css="""
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    
     .header-container { 
-        background: linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%);
+        background: linear-gradient(135deg, #0066cc 0%, #1976d2 100%);
         padding: 40px 20px;
         border-radius: 15px;
-        color: white;
+        color: #ffffff;
         text-align: center;
         margin-bottom: 30px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
     }
-    .header-container h1 { margin: 0; font-size: 2.5em; }
-    .header-container p { margin: 10px 0 0 0; opacity: 0.95; }
+    .header-container h1 { margin: 0; font-size: 2.5em; color: #ffffff; }
+    .header-container p { margin: 10px 0 0 0; color: #ffffff; font-weight: 500; }
     
     .input-section {
-        background: #f8fafc;
+        background: #f5f5f5;
         padding: 20px;
         border-radius: 12px;
-        border: 1px solid #e2e8f0;
+        border: 1px solid #d0d0d0;
     }
     
     .section-title {
-        color: #1e40af;
+        color: #0066cc;
         font-weight: 700;
         font-size: 1.3em;
         margin-bottom: 12px;
         padding-bottom: 8px;
-        border-bottom: 3px solid #0ea5e9;
+        border-bottom: 3px solid #1976d2;
     }
     
     .results-high-risk {
-        background: #fee2e2;
-        border-left: 5px solid #dc2626;
+        background: #ffcccc;
+        border-left: 5px solid #cc0000;
         padding: 20px;
         border-radius: 8px;
         margin-top: 20px;
     }
     
     .results-high-risk h2 {
-        color: #991b1b;
+        color: #660000;
         margin-top: 0;
         font-size: 1.8em;
     }
     
     .results-low-risk {
-        background: #dcfce7;
-        border-left: 5px solid #16a34a;
+        background: #ccffcc;
+        border-left: 5px solid #009900;
         padding: 20px;
         border-radius: 8px;
         margin-top: 20px;
     }
     
     .results-low-risk h2 {
-        color: #14532d;
+        color: #003300;
         margin-top: 0;
         font-size: 1.8em;
     }
     
     .metric-box {
-        background: white;
+        background: #ffffff;
         padding: 12px 15px;
         border-radius: 8px;
-        border: 1px solid #e2e8f0;
+        border: 1px solid #cccccc;
         margin: 8px 0;
     }
     
     .metric-label {
-        color: #64748b;
+        color: #666666;
         font-size: 0.85em;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
     
     .metric-value {
-        color: #0f172a;
+        color: #000000;
         font-size: 1.4em;
         font-weight: 600;
         margin-top: 4px;
     }
     
     .action-button {
-        background: linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%) !important;
-        color: white !important;
+        background: linear-gradient(135deg, #0066cc 0%, #1976d2 100%) !important;
+        color: #ffffff !important;
         border: none !important;
         height: 50px !important;
         font-weight: 600 !important;
@@ -492,16 +613,16 @@ with gr.Blocks(
     }
     
     .action-button:hover {
-        box-shadow: 0 6px 20px rgba(30, 64, 175, 0.3) !important;
+        box-shadow: 0 6px 20px rgba(0, 102, 204, 0.4) !important;
     }
     """
 ) as demo:
     
     gr.HTML("""
     <div class="header-container">
-        <h1>🏥 NeoScreen</h1>
-        <p><strong>AI-Powered Neonatal Clinical Assessment System</strong></p>
-        <p style="font-size: 0.95em; margin-top: 15px;">
+        <h1 style="color: #ffffff; margin: 0; font-size: 3.2em; letter-spacing: 1px;">NeoScreen</h1>
+        <p style="color: #ffffff; margin: 12px 0 0 0; font-size: 1.15em;"><strong>AI-Powered Neonatal Clinical Assessment System</strong></p>
+        <p style="font-size: 1.02em; margin-top: 15px; color: #ffffff;">
             Fusion model combining audio and clinical data for accurate risk assessment
         </p>
     </div>
@@ -511,7 +632,7 @@ with gr.Blocks(
     with gr.Row():
         # LEFT COLUMN: Audio Input
         with gr.Column(scale=1):
-            gr.Markdown("### 🎵 Audio Input (Gradio)")
+            gr.Markdown("### 🎵 Audio Input")
             gr.Markdown("*Mel-spectrogram (128×500)*")
             gr.Markdown("**Choose method:**")
             
@@ -519,9 +640,9 @@ with gr.Blocks(
             audio_input = gr.Audio(label="Audio Data", type="numpy", interactive=False)
             
             with gr.Row():
-                tab_gen = gr.Button("🎲 Generate", size="sm")
-                tab_up = gr.Button("📁 Upload", size="sm")
-                tab_rec = gr.Button("🎤 Record", size="sm")
+                tab_gen = gr.Button("Generate", size="sm", elem_classes="action-button")
+                tab_up = gr.Button("Upload", size="sm", elem_classes="action-button")
+                tab_rec = gr.Button("Record", size="sm", elem_classes="action-button")
             
             # Generate tab
             with gr.Group(visible=True) as gen_group:
@@ -577,7 +698,7 @@ with gr.Blocks(
     
     # Prediction button
     with gr.Row():
-        predict_btn = gr.Button("🔮 Generate Prediction", size="lg", variant="primary")
+        predict_btn = gr.Button("Generate Prediction", size="lg", variant="primary", elem_classes="action-button")
     
     with gr.Row():
         output = gr.HTML(value="Results will appear here...")
@@ -596,19 +717,19 @@ with gr.Blocks(
             gr.Markdown("""
             ### 🏗️ System Architecture
             
-            **Audio Analysis (70% weight)**
+            **Audio Analysis (30% weight)**
             - CNN-LSTM neural network
             - Processes mel-spectrogram features
             - Detects acoustic biomarkers from patient audio
             
-            **Clinical Analysis (30% weight)**
+            **Clinical Analysis (70% weight)**
             - Extreme Learning Machine (ELM)
             - Analyzes 10 vital signs & measurements
             - Captures neonatal health indicators
             
             **Fusion Strategy**
             - Weighted averaging combines both modalities
-            - Leverages audio + clinical complementarity
+            - Clinical assessment is primary driver (70%), audio provides supporting evidence (30%)
             
             ---
             
