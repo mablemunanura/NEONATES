@@ -465,7 +465,7 @@ def predict(audio_input, ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
         <div class="{risk_class}">
             <h2>{diagnosis}</h2>
             
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin: 15px 0;">
+            <div class="metric-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin: 15px 0;">
                 <div class="metric-box">
                     <div class="metric-label">🎵 Audio</div>
                     <div class="metric-value">{audio_pred:.1%}</div>
@@ -487,7 +487,7 @@ def predict(audio_input, ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
             <hr style="border: none; border-top: 1px solid rgba(0,0,0,0.1); margin: 15px 0;">
             
             <h3 style="margin-top: 15px; margin-bottom: 10px;">🤖 AI Explanation:</h3>
-            <div style="background: rgba(0,0,0,0.02); padding: 12px; border-left: 4px solid #1976d2; border-radius: 4px; font-size: 0.95em; line-height: 1.6;">
+            <div class="explanation-box" style="background: rgba(0,0,0,0.02); padding: 12px; border-left: 4px solid #1976d2; border-radius: 4px; font-size: 0.95em; line-height: 1.6;">
                 {explanation_html}
             </div>
             
@@ -496,7 +496,7 @@ def predict(audio_input, ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
             <hr style="border: none; border-top: 1px solid rgba(0,0,0,0.1); margin: 15px 0;">
             
             <h3 style="margin-top: 15px; margin-bottom: 10px;">🔍 Technical Details:</h3>
-            <div style="background: #f5f5f5; padding: 10px; border-radius: 5px; font-size: 0.9em; font-family: monospace;">
+            <div class="technical-box" style="background: #f5f5f5; padding: 10px; border-radius: 5px; font-size: 0.9em; font-family: monospace;">
                 <div style="margin-top: 5px;"><b>Fusion Calculation:</b></div>
                 <div style="margin-left: 10px;">= ({audio_weight:.0%} × {audio_pred:.4f}) + ({clinical_weight:.0%} × {clinical_pred:.4f})</div>
                 <div style="margin-left: 10px;">= {audio_weight * audio_pred:.4f} + {clinical_weight * clinical_pred:.4f}</div>
@@ -614,6 +614,156 @@ with gr.Blocks(
     
     .action-button:hover {
         box-shadow: 0 6px 20px rgba(0, 102, 204, 0.4) !important;
+    }
+    
+    /* Responsive Design */
+    @media (max-width: 1024px) {
+        .metric-grid {
+            grid-template-columns: 1fr 1fr !important;
+        }
+        
+        .header-container h1 {
+            font-size: 2em !important;
+        }
+        
+        .header-container p {
+            font-size: 0.95em !important;
+        }
+    }
+    
+    @media (max-width: 768px) {
+        .metric-grid {
+            grid-template-columns: 1fr !important;
+        }
+        
+        .results-high-risk,
+        .results-low-risk {
+            padding: 15px !important;
+        }
+        
+        .results-high-risk h2,
+        .results-low-risk h2 {
+            font-size: 1.5em !important;
+        }
+        
+        .header-container {
+            padding: 25px 15px !important;
+        }
+        
+        .header-container h1 {
+            font-size: 1.8em !important;
+        }
+        
+        .header-container p {
+            font-size: 0.9em !important;
+        }
+        
+        .metric-box {
+            padding: 10px 12px !important;
+        }
+        
+        .metric-label {
+            font-size: 0.75em !important;
+        }
+        
+        .metric-value {
+            font-size: 1.2em !important;
+        }
+        
+        .action-button {
+            height: 45px !important;
+            font-size: 0.95em !important;
+        }
+    }
+    
+    @media (max-width: 480px) {
+        .metric-grid {
+            grid-template-columns: 1fr !important;
+            gap: 8px !important;
+        }
+        
+        .results-high-risk,
+        .results-low-risk {
+            padding: 12px !important;
+            border-radius: 6px !important;
+        }
+        
+        .results-high-risk h2,
+        .results-low-risk h2 {
+            font-size: 1.3em !important;
+            margin-bottom: 10px !important;
+        }
+        
+        .results-high-risk h3,
+        .results-low-risk h3 {
+            color: #333333 !important;
+        }
+        
+        .results-high-risk h4,
+        .results-low-risk h4 {
+            color: #d32f2f !important;
+        }
+        
+        .metric-box {
+            padding: 8px 10px !important;
+            border-radius: 6px !important;
+        }
+        
+        .metric-label {
+            font-size: 0.7em !important;
+            letter-spacing: 0.3px !important;
+            color: #333333 !important;
+        }
+        
+        .metric-value {
+            font-size: 1.1em !important;
+            margin-top: 3px !important;
+            color: #000000 !important;
+        }
+        
+        h3 {
+            font-size: 1.1em !important;
+            margin-top: 12px !important;
+            margin-bottom: 8px !important;
+        }
+        
+        hr {
+            margin: 10px 0 !important;
+        }
+        
+        .explanation-box {
+            padding: 10px !important;
+            font-size: 0.9em !important;
+            color: #222222 !important;
+        }
+        
+        .explanation-box b {
+            color: #000000 !important;
+        }
+        
+        .technical-box {
+            padding: 8px !important;
+            font-size: 0.8em !important;
+            color: #333333 !important;
+        }
+        
+        .technical-box b {
+            color: #000000 !important;
+        }
+        
+        .results-high-risk {
+            background: #ffcccc !important;
+            color: #2d2d2d !important;
+        }
+        
+        .results-low-risk {
+            background: #ccffcc !important;
+            color: #2d2d2d !important;
+        }
+        
+        ul li {
+            color: #333333 !important;
+        }
     }
     """
 ) as demo:
