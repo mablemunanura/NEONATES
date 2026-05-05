@@ -519,7 +519,7 @@ def predict(audio_input, ga, bw, hc, dm, apgar1, apgar5, temp, hr, rr, spo2):
 
 # ==================== Gradio Interface ====================
 with gr.Blocks(
-    title="NeoScreen - Neonatal Assessment",
+    title="TotoScreen - Infant Health Assessment",
     theme=None,
     css="""
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
@@ -770,8 +770,8 @@ with gr.Blocks(
     
     gr.HTML("""
     <div class="header-container">
-        <h1 style="color: #ffffff; margin: 0; font-size: 3.2em; letter-spacing: 1px;">NeoScreen</h1>
-        <p style="color: #ffffff; margin: 12px 0 0 0; font-size: 1.15em;"><strong>AI-Powered Neonatal Clinical Assessment System</strong></p>
+        <h1 style="color: #ffffff; margin: 0; font-size: 3.2em; letter-spacing: 1px;">TotoScreen</h1>
+        <p style="color: #ffffff; margin: 12px 0 0 0; font-size: 1.15em;"><strong>AI-Powered Infant Health Assessment System</strong></p>
         <p style="font-size: 1.02em; margin-top: 15px; color: #ffffff;">
             Fusion model combining audio and clinical data for accurate risk assessment
         </p>
@@ -862,7 +862,7 @@ with gr.Blocks(
     )
     
     # Info section
-    with gr.Accordion("ℹ️ About NeoScreen", open=False):
+    with gr.Accordion("ℹ️ About TotoScreen", open=False):
         with gr.Column():
             gr.Markdown("""
             ### 🏗️ System Architecture

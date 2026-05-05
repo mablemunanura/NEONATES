@@ -395,7 +395,7 @@ def main():
     ax.set_title('Trade-off: Speedup vs Performance', fontweight='bold')
     ax.grid(True, alpha=0.3)
     
-    plt.suptitle('NeoScreen Fusion Model Comprehensive Evaluation', fontsize=16, fontweight='bold')
+    plt.suptitle('TotoScreen Fusion Model Comprehensive Evaluation', fontsize=16, fontweight='bold')
     plt.tight_layout()
     
     output_path = Path("fusion_evaluation.png")

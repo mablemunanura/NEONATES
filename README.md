@@ -1,4 +1,4 @@
-# 🫁 NeoScreen: Multimodal AI for Neonatal Respiratory Distress Detection
+# 🫁 TotoScreen: Multimodal AI for Infant Respiratory Distress Detection
 
 [Python 3.9+](https://www.python.org/downloads/)
 [License: MIT](https://opensource.org/licenses/MIT)
@@ -7,7 +7,7 @@
 
 ## 🔍 **Overview**
 
-**NeoScreen** is a multimodal AI framework that combines **clinical data** and **respiratory sound analysis** to detect neonatal respiratory distress in low-resource settings. Developed as a machine learning project at Makerere University (Group SW-ML-5).
+**TotoScreen** is a multimodal AI framework that combines **clinical data** and **respiratory sound analysis** to detect infant respiratory distress in low-resource settings. Developed as a machine learning project at Makerere University (Group SW-ML-5).
 
 | **What it does**                          | **Why it matters**                         |
 | ----------------------------------------------- | ------------------------------------------------ |
@@ -29,7 +29,7 @@
 
 ## 💡 **Our Solution**
 
-NeoScreen fuses two complementary data modalities:
+TotoScreen fuses two complementary data modalities:
 
 | 📊**Tabular Path** | 🎵**Audio Path** |
 | ------------------------ | ---------------------- |
