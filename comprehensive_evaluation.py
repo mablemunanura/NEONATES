@@ -1,10 +1,10 @@
 """
-Comprehensive Pruning Evaluation: Full Fusion Model Performance
-Evaluates original vs pruned models on:
-- Accuracy, Precision, Recall, F1
-- Prediction consistency across test cases
+Comprehensive Pruning Evaluation: Audio and Clinical Model Performance
+Evaluates original vs pruned models SEPARATELY on:
+- Audio Model: Accuracy, Precision, Recall, F1, AUC-ROC
+- Clinical Model: Accuracy, Precision, Recall, F1, AUC-ROC
 - Speed vs Performance tradeoff
-- Full fusion model (audio + clinical)
+- NO FUSION evaluation (separate modality evaluation only)
 """
 
 import numpy as np
@@ -16,7 +16,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 import matplotlib.pyplot as plt
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, roc_auc_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 import seaborn as sns
 
 # ==================== Model Loading ====================
@@ -94,14 +94,10 @@ def predict_clinical(clinical_model, clinical_data):
     except:
         return np.random.rand(len(clinical_data)) * 0.3 + 0.35
 
-def predict_fusion(audio_preds, clinical_preds, audio_weight=0.3, clinical_weight=0.7):
-    """Fuse predictions"""
-    return (audio_weight * audio_preds) + (clinical_weight * clinical_preds)
-
 # ==================== Test Data Generation ====================
 
 def generate_synthetic_test_data(n_samples=100):
-    """Generate synthetic test data"""
+    """Generate synthetic test data for SEPARATE audio and clinical evaluation"""
     # Audio: mel-spectrograms (1, 128, 500)
     audio_data = np.random.randn(n_samples, 1, 128, 500).astype(np.float32) * 0.1
     
@@ -119,15 +115,15 @@ def generate_synthetic_test_data(n_samples=100):
     clinical_data[:, 8] = np.clip(clinical_data[:, 8] * 15 + 50, 30, 70)  # RR
     clinical_data[:, 9] = np.clip(clinical_data[:, 9] * 3 + 97, 90, 100)  # SPO2
     
-    # Generate labels (risk threshold: fusion > 0.55)
+    # Generate labels (independent for each modality)
     labels = np.random.randint(0, 2, n_samples)
     
     return audio_data, clinical_data, labels
 
-# ==================== Evaluation ====================
+# ==================== Evaluation Functions ====================
 
-def evaluate_model_pair(name, audio_model, clinical_model, audio_data, clinical_data, true_labels):
-    """Evaluate a model pair (audio + clinical)"""
+def evaluate_audio_model(name, audio_model, audio_data, true_labels):
+    """Evaluate audio model only"""
     
     print(f"\n[Evaluating] {name}")
     print("-" * 60)
@@ -135,90 +131,75 @@ def evaluate_model_pair(name, audio_model, clinical_model, audio_data, clinical_
     # Time inference
     start = time.perf_counter()
     audio_preds = predict_audio(audio_model, audio_data)
-    clinical_preds = predict_clinical(clinical_model, clinical_data)
-    fusion_preds = predict_fusion(audio_preds, clinical_preds)
     inference_time = (time.perf_counter() - start) * 1000
     
     # Binarize predictions for metrics (threshold 0.5)
     audio_binary = (audio_preds > 0.5).astype(int)
-    clinical_binary = (clinical_preds > 0.5).astype(int)
-    fusion_binary = (fusion_preds > 0.5).astype(int)
     
     # Calculate metrics
     results = {
         'name': name,
-        'audio': {
-            'accuracy': accuracy_score(true_labels, audio_binary),
-            'precision': precision_score(true_labels, audio_binary, zero_division=0),
-            'recall': recall_score(true_labels, audio_binary, zero_division=0),
-            'f1': f1_score(true_labels, audio_binary, zero_division=0),
-            'auc': roc_auc_score(true_labels, audio_preds),
-            'mean_pred': audio_preds.mean(),
-            'std_pred': audio_preds.std(),
-        },
-        'clinical': {
-            'accuracy': accuracy_score(true_labels, clinical_binary),
-            'precision': precision_score(true_labels, clinical_binary, zero_division=0),
-            'recall': recall_score(true_labels, clinical_binary, zero_division=0),
-            'f1': f1_score(true_labels, clinical_binary, zero_division=0),
-            'auc': roc_auc_score(true_labels, clinical_preds),
-            'mean_pred': clinical_preds.mean(),
-            'std_pred': clinical_preds.std(),
-        },
-        'fusion': {
-            'accuracy': accuracy_score(true_labels, fusion_binary),
-            'precision': precision_score(true_labels, fusion_binary, zero_division=0),
-            'recall': recall_score(true_labels, fusion_binary, zero_division=0),
-            'f1': f1_score(true_labels, fusion_binary, zero_division=0),
-            'auc': roc_auc_score(true_labels, fusion_preds),
-            'mean_pred': fusion_preds.mean(),
-            'std_pred': fusion_preds.std(),
-        },
+        'accuracy': accuracy_score(true_labels, audio_binary),
+        'precision': precision_score(true_labels, audio_binary, zero_division=0),
+        'recall': recall_score(true_labels, audio_binary, zero_division=0),
+        'f1': f1_score(true_labels, audio_binary, zero_division=0),
+        'auc': roc_auc_score(true_labels, audio_preds),
         'inference_time_ms': inference_time,
-        'predictions': {
-            'audio': audio_preds,
-            'clinical': clinical_preds,
-            'fusion': fusion_preds,
-        }
     }
     
     # Print results
-    print(f"\nAudio Model:")
-    print(f"  Accuracy:  {results['audio']['accuracy']:.4f}")
-    print(f"  Precision: {results['audio']['precision']:.4f}")
-    print(f"  Recall:    {results['audio']['recall']:.4f}")
-    print(f"  F1:        {results['audio']['f1']:.4f}")
-    print(f"  AUC-ROC:   {results['audio']['auc']:.4f}")
-    print(f"  Pred Mean: {results['audio']['mean_pred']:.4f} +/- {results['audio']['std_pred']:.4f}")
+    print(f"  Accuracy:  {results['accuracy']:.4f}")
+    print(f"  Precision: {results['precision']:.4f}")
+    print(f"  Recall:    {results['recall']:.4f}")
+    print(f"  F1-Score:  {results['f1']:.4f}")
+    print(f"  AUC-ROC:   {results['auc']:.4f}")
+    print(f"  Inference: {inference_time:.2f}ms")
     
-    print(f"\nClinical Model:")
-    print(f"  Accuracy:  {results['clinical']['accuracy']:.4f}")
-    print(f"  Precision: {results['clinical']['precision']:.4f}")
-    print(f"  Recall:    {results['clinical']['recall']:.4f}")
-    print(f"  F1:        {results['clinical']['f1']:.4f}")
-    print(f"  AUC-ROC:   {results['clinical']['auc']:.4f}")
-    print(f"  Pred Mean: {results['clinical']['mean_pred']:.4f} +/- {results['clinical']['std_pred']:.4f}")
+    return results
+
+def evaluate_clinical_model(name, clinical_model, clinical_data, true_labels):
+    """Evaluate clinical model only"""
     
-    print(f"\nFusion Model (30% audio + 70% clinical):")
-    print(f"  Accuracy:  {results['fusion']['accuracy']:.4f}")
-    print(f"  Precision: {results['fusion']['precision']:.4f}")
-    print(f"  Recall:    {results['fusion']['recall']:.4f}")
-    print(f"  F1:        {results['fusion']['f1']:.4f}")
-    print(f"  AUC-ROC:   {results['fusion']['auc']:.4f}")
-    print(f"  Pred Mean: {results['fusion']['mean_pred']:.4f} +/- {results['fusion']['std_pred']:.4f}")
+    print(f"\n[Evaluating] {name}")
+    print("-" * 60)
     
-    print(f"\nInference Time: {inference_time:.2f}ms")
+    # Time inference
+    start = time.perf_counter()
+    clinical_preds = predict_clinical(clinical_model, clinical_data)
+    inference_time = (time.perf_counter() - start) * 1000
+    
+    # Binarize predictions for metrics (threshold 0.5)
+    clinical_binary = (clinical_preds > 0.5).astype(int)
+    
+    # Calculate metrics
+    results = {
+        'name': name,
+        'accuracy': accuracy_score(true_labels, clinical_binary),
+        'precision': precision_score(true_labels, clinical_binary, zero_division=0),
+        'recall': recall_score(true_labels, clinical_binary, zero_division=0),
+        'f1': f1_score(true_labels, clinical_binary, zero_division=0),
+        'auc': roc_auc_score(true_labels, clinical_preds),
+        'inference_time_ms': inference_time,
+    }
+    
+    # Print results
+    print(f"  Accuracy:  {results['accuracy']:.4f}")
+    print(f"  Precision: {results['precision']:.4f}")
+    print(f"  Recall:    {results['recall']:.4f}")
+    print(f"  F1-Score:  {results['f1']:.4f}")
+    print(f"  AUC-ROC:   {results['auc']:.4f}")
+    print(f"  Inference: {inference_time:.2f}ms")
     
     return results
 
 def main():
-    print("=" * 70)
-    print("[COMPREHENSIVE FUSION PRUNING EVALUATION]")
-    print("Comparing: Original vs Light vs Medium vs Aggressive Fusion Models")
-    print("=" * 70)
+    print("=" * 80)
+    print("[COMPREHENSIVE PRUNING EVALUATION]")
+    print("Separate evaluation of Audio and Clinical models (NO FUSION)")
+    print("=" * 80)
     
-    # Load BOTH audio AND clinical models for each pruning level
-    print("\n[Loading] model pairs...")
+    # Load models for each pruning level
+    print("\n[STEP 1] Loading Models...")
     
     models = {
         'original': {
@@ -240,199 +221,281 @@ def main():
     }
     
     # Verify all models loaded
-    print("\n[Verification]")
+    print("\n[STEP 2] Verifying Models...")
     for level, model_pair in models.items():
-        audio_ok = model_pair['audio'] is not None
-        clinical_ok = model_pair['clinical'] is not None
-        status = "OK" if (audio_ok and clinical_ok) else "INCOMPLETE"
-        print(f"  {level:<15} Audio: {audio_ok:<5} Clinical: {clinical_ok:<5} [{status}]")
+        audio_ok = "✓" if model_pair['audio'] is not None else "✗"
+        clinical_ok = "✓" if model_pair['clinical'] is not None else "✗"
+        print(f"  {level:<12} Audio: {audio_ok}  Clinical: {clinical_ok}")
     
     # Generate test data
-    print("\n[Generating] synthetic test data (100 samples)...")
+    print("\n[STEP 3] Generating Synthetic Test Data...")
     audio_data, clinical_data, true_labels = generate_synthetic_test_data(n_samples=100)
-    print(f"  Risk distribution: {np.sum(true_labels)} positive, {100-np.sum(true_labels)} negative")
-    print("\n" + "=" * 70)
-    print("[EVALUATION RESULTS]")
-    print("=" * 70)
+    print(f"  Samples: {len(audio_data)}")
+    print(f"  Positive labels: {np.sum(true_labels)}")
+    print(f"  Negative labels: {100 - np.sum(true_labels)}")
     
-    results = {}
+    # Evaluate Audio Models
+    print("\n" + "=" * 80)
+    print("[STEP 4] AUDIO MODEL EVALUATION")
+    print("=" * 80)
     
-    results['original'] = evaluate_model_pair(
-        "ORIGINAL FUSION (Audio + Clinical)",
+    audio_results = {}
+    audio_results['original'] = evaluate_audio_model(
+        "ORIGINAL AUDIO MODEL",
         models['original']['audio'], 
-        models['original']['clinical'],
-        audio_data, clinical_data, true_labels
+        audio_data, true_labels
     )
     
-    results['light'] = evaluate_model_pair(
-        "LIGHT PRUNED FUSION (Audio + Clinical)",
+    audio_results['light'] = evaluate_audio_model(
+        "LIGHT PRUNED AUDIO MODEL (25% reduction)",
         models['light']['audio'], 
-        models['light']['clinical'],
-        audio_data, clinical_data, true_labels
+        audio_data, true_labels
     )
     
-    results['medium'] = evaluate_model_pair(
-        "MEDIUM PRUNED FUSION (Audio + Clinical)",
+    audio_results['medium'] = evaluate_audio_model(
+        "MEDIUM PRUNED AUDIO MODEL (50% reduction)",
         models['medium']['audio'], 
-        models['medium']['clinical'],
-        audio_data, clinical_data, true_labels
+        audio_data, true_labels
     )
     
-    results['aggressive'] = evaluate_model_pair(
-        "AGGRESSIVE PRUNED FUSION (Audio + Clinical)",
+    audio_results['aggressive'] = evaluate_audio_model(
+        "AGGRESSIVE PRUNED AUDIO MODEL (70% reduction)",
         models['aggressive']['audio'], 
-        models['aggressive']['clinical'],
-        audio_data, clinical_data, true_labels
+        audio_data, true_labels
     )
     
-    # Compare results
-    print("\n" + "=" * 70)
-    print("[PERFORMANCE COMPARISON]")
-    print("=" * 70)
+    # Evaluate Clinical Models
+    print("\n" + "=" * 80)
+    print("[STEP 5] CLINICAL MODEL EVALUATION")
+    print("=" * 80)
     
-    print(f"\n{'Model':<20} {'Accuracy':<12} {'Precision':<12} {'Recall':<12} {'F1':<12} {'Speed'}")
-    print("-" * 70)
+    clinical_results = {}
+    clinical_results['original'] = evaluate_clinical_model(
+        "ORIGINAL CLINICAL MODEL",
+        models['original']['clinical'],
+        clinical_data, true_labels
+    )
+    
+    clinical_results['light'] = evaluate_clinical_model(
+        "LIGHT PRUNED CLINICAL MODEL (25% reduction)",
+        models['light']['clinical'],
+        clinical_data, true_labels
+    )
+    
+    clinical_results['medium'] = evaluate_clinical_model(
+        "MEDIUM PRUNED CLINICAL MODEL (50% reduction)",
+        models['medium']['clinical'],
+        clinical_data, true_labels
+    )
+    
+    clinical_results['aggressive'] = evaluate_clinical_model(
+        "AGGRESSIVE PRUNED CLINICAL MODEL (70% reduction)",
+        models['aggressive']['clinical'],
+        clinical_data, true_labels
+    )
+    
+    # Summary Tables
+    print("\n" + "=" * 80)
+    print("[STEP 6] PERFORMANCE COMPARISON - AUDIO MODELS")
+    print("=" * 80)
+    
+    print(f"\n{'Model':<20} {'Accuracy':<12} {'Precision':<12} {'Recall':<12} {'F1-Score':<12} {'Speed (ms)'}")
+    print("-" * 80)
     
     for level in ['original', 'light', 'medium', 'aggressive']:
-        r = results[level]
-        fusion_acc = r['fusion']['accuracy']
-        fusion_prec = r['fusion']['precision']
-        fusion_rec = r['fusion']['recall']
-        fusion_f1 = r['fusion']['f1']
-        speed = r['inference_time_ms']
-        
-        print(f"{level:<20} {fusion_acc:<12.4f} {fusion_prec:<12.4f} {fusion_rec:<12.4f} {fusion_f1:<12.4f} {speed:.2f}ms")
+        r = audio_results[level]
+        print(f"{level:<20} {r['accuracy']:<12.4f} {r['precision']:<12.4f} {r['recall']:<12.4f} {r['f1']:<12.4f} {r['inference_time_ms']:>10.2f}")
     
-    # Calculate degradation
-    print("\n" + "=" * 70)
-    print("[PERFORMANCE DEGRADATION vs ORIGINAL]")
-    print("=" * 70)
+    print("\n" + "=" * 80)
+    print("[STEP 7] PERFORMANCE COMPARISON - CLINICAL MODELS")
+    print("=" * 80)
     
-    orig_f1 = results['original']['fusion']['f1']
-    orig_time = results['original']['inference_time_ms']
+    print(f"\n{'Model':<20} {'Accuracy':<12} {'Precision':<12} {'Recall':<12} {'F1-Score':<12} {'Speed (ms)'}")
+    print("-" * 80)
+    
+    for level in ['original', 'light', 'medium', 'aggressive']:
+        r = clinical_results[level]
+        print(f"{level:<20} {r['accuracy']:<12.4f} {r['precision']:<12.4f} {r['recall']:<12.4f} {r['f1']:<12.4f} {r['inference_time_ms']:>10.2f}")
+    
+    # Degradation Analysis
+    print("\n" + "=" * 80)
+    print("[STEP 8] AUDIO MODEL DEGRADATION ANALYSIS vs ORIGINAL")
+    print("=" * 80)
+    
+    orig_audio_f1 = audio_results['original']['f1']
+    orig_audio_time = audio_results['original']['inference_time_ms']
     
     for level in ['light', 'medium', 'aggressive']:
-        r = results[level]
-        f1_degrad = (orig_f1 - r['fusion']['f1']) / orig_f1 * 100
-        speedup = orig_time / r['inference_time_ms']
+        r = audio_results[level]
+        f1_degrad = ((orig_audio_f1 - r['f1']) / orig_audio_f1 * 100) if orig_audio_f1 > 0 else 0
+        speedup = orig_audio_time / r['inference_time_ms'] if r['inference_time_ms'] > 0 else 0
+        acc_change = r['accuracy'] - audio_results['original']['accuracy']
         
         print(f"\n{level.upper()}:")
-        print(f"  F1 Score Degradation: {f1_degrad:.2f}%")
-        print(f"  Speedup: {speedup:.2f}x")
-        print(f"  Accuracy Change: {(r['fusion']['accuracy'] - results['original']['fusion']['accuracy']):.4f}")
+        print(f"  F1 Degradation:  {f1_degrad:>8.2f}%")
+        print(f"  Speedup Factor:  {speedup:>8.2f}x")
+        print(f"  Accuracy Change: {acc_change:>+8.4f}")
+    
+    print("\n" + "=" * 80)
+    print("[STEP 9] CLINICAL MODEL DEGRADATION ANALYSIS vs ORIGINAL")
+    print("=" * 80)
+    
+    orig_clinical_f1 = clinical_results['original']['f1']
+    orig_clinical_time = clinical_results['original']['inference_time_ms']
+    
+    for level in ['light', 'medium', 'aggressive']:
+        r = clinical_results[level]
+        f1_degrad = ((orig_clinical_f1 - r['f1']) / orig_clinical_f1 * 100) if orig_clinical_f1 > 0 else 0
+        speedup = orig_clinical_time / r['inference_time_ms'] if r['inference_time_ms'] > 0 else 0
+        acc_change = r['accuracy'] - clinical_results['original']['accuracy']
+        
+        print(f"\n{level.upper()}:")
+        print(f"  F1 Degradation:  {f1_degrad:>8.2f}%")
+        print(f"  Speedup Factor:  {speedup:>8.2f}x")
+        print(f"  Accuracy Change: {acc_change:>+8.4f}")
     
     # Create visualizations
-    print("\n[Creating] visualizations...")
+    print("\n[STEP 10] Creating Visualizations...")
     
     fig, axes = plt.subplots(2, 3, figsize=(18, 10))
     
     levels = ['original', 'light', 'medium', 'aggressive']
     colors = ['#1f77b4', '#2ca02c', '#ff7f0e', '#d62728']
     
-    # 1. Fusion Accuracy
+    # 1. Accuracy Comparison
     ax = axes[0, 0]
-    accuracies = [results[l]['fusion']['accuracy'] for l in levels]
-    ax.bar(levels, accuracies, color=colors)
-    ax.set_ylabel('Accuracy', fontweight='bold')
-    ax.set_title('Fusion Model Accuracy', fontweight='bold')
-    ax.set_ylim([0, 1])
-    for i, v in enumerate(accuracies):
-        ax.text(i, v + 0.02, f'{v:.3f}', ha='center', fontweight='bold')
-    
-    # 2. F1 Scores
-    ax = axes[0, 1]
-    f1_scores = [results[l]['fusion']['f1'] for l in levels]
-    ax.bar(levels, f1_scores, color=colors)
-    ax.set_ylabel('F1 Score', fontweight='bold')
-    ax.set_title('Fusion Model F1 Score', fontweight='bold')
-    ax.set_ylim([0, 1])
-    for i, v in enumerate(f1_scores):
-        ax.text(i, v + 0.02, f'{v:.3f}', ha='center', fontweight='bold')
-    
-    # 3. AUC-ROC
-    ax = axes[0, 2]
-    aucs = [results[l]['fusion']['auc'] for l in levels]
-    ax.bar(levels, aucs, color=colors)
-    ax.set_ylabel('AUC-ROC', fontweight='bold')
-    ax.set_title('Fusion Model AUC-ROC', fontweight='bold')
-    ax.set_ylim([0, 1])
-    for i, v in enumerate(aucs):
-        ax.text(i, v + 0.02, f'{v:.3f}', ha='center', fontweight='bold')
-    
-    # 4. Inference Speed
-    ax = axes[1, 0]
-    speeds = [results[l]['inference_time_ms'] for l in levels]
-    ax.bar(levels, speeds, color=colors)
-    ax.set_ylabel('Time (ms)', fontweight='bold')
-    ax.set_title('Inference Speed', fontweight='bold')
-    for i, v in enumerate(speeds):
-        ax.text(i, v + 0.005, f'{v:.2f}ms', ha='center', fontweight='bold')
-    
-    # 5. Precision vs Recall
-    ax = axes[1, 1]
-    precisions = [results[l]['fusion']['precision'] for l in levels]
-    recalls = [results[l]['fusion']['recall'] for l in levels]
+    audio_acc = [audio_results[l]['accuracy'] for l in levels]
+    clinical_acc = [clinical_results[l]['accuracy'] for l in levels]
     x = np.arange(len(levels))
     width = 0.35
-    ax.bar(x - width/2, precisions, width, label='Precision', color='skyblue')
-    ax.bar(x + width/2, recalls, width, label='Recall', color='orange')
-    ax.set_ylabel('Score', fontweight='bold')
-    ax.set_title('Precision vs Recall', fontweight='bold')
+    ax.bar(x - width/2, audio_acc, width, label='Audio', color='steelblue', alpha=0.8)
+    ax.bar(x + width/2, clinical_acc, width, label='Clinical', color='coral', alpha=0.8)
+    ax.set_ylabel('Accuracy', fontweight='bold', fontsize=11)
+    ax.set_title('Accuracy Comparison', fontweight='bold', fontsize=12)
     ax.set_xticks(x)
     ax.set_xticklabels(levels)
     ax.legend()
     ax.set_ylim([0, 1])
+    ax.grid(axis='y', alpha=0.3)
     
-    # 6. Speedup vs F1 Degradation
+    # 2. F1 Scores
+    ax = axes[0, 1]
+    audio_f1 = [audio_results[l]['f1'] for l in levels]
+    clinical_f1 = [clinical_results[l]['f1'] for l in levels]
+    ax.bar(x - width/2, audio_f1, width, label='Audio', color='steelblue', alpha=0.8)
+    ax.bar(x + width/2, clinical_f1, width, label='Clinical', color='coral', alpha=0.8)
+    ax.set_ylabel('F1 Score', fontweight='bold', fontsize=11)
+    ax.set_title('F1 Score Comparison', fontweight='bold', fontsize=12)
+    ax.set_xticks(x)
+    ax.set_xticklabels(levels)
+    ax.legend()
+    ax.set_ylim([0, 1])
+    ax.grid(axis='y', alpha=0.3)
+    
+    # 3. AUC-ROC
+    ax = axes[0, 2]
+    audio_auc = [audio_results[l]['auc'] for l in levels]
+    clinical_auc = [clinical_results[l]['auc'] for l in levels]
+    ax.bar(x - width/2, audio_auc, width, label='Audio', color='steelblue', alpha=0.8)
+    ax.bar(x + width/2, clinical_auc, width, label='Clinical', color='coral', alpha=0.8)
+    ax.set_ylabel('AUC-ROC', fontweight='bold', fontsize=11)
+    ax.set_title('AUC-ROC Comparison', fontweight='bold', fontsize=12)
+    ax.set_xticks(x)
+    ax.set_xticklabels(levels)
+    ax.legend()
+    ax.set_ylim([0, 1])
+    ax.grid(axis='y', alpha=0.3)
+    
+    # 4. Inference Speed
+    ax = axes[1, 0]
+    audio_speed = [audio_results[l]['inference_time_ms'] for l in levels]
+    clinical_speed = [clinical_results[l]['inference_time_ms'] for l in levels]
+    ax.bar(x - width/2, audio_speed, width, label='Audio', color='steelblue', alpha=0.8)
+    ax.bar(x + width/2, clinical_speed, width, label='Clinical', color='coral', alpha=0.8)
+    ax.set_ylabel('Time (ms)', fontweight='bold', fontsize=11)
+    ax.set_title('Inference Speed Comparison', fontweight='bold', fontsize=12)
+    ax.set_xticks(x)
+    ax.set_xticklabels(levels)
+    ax.legend()
+    ax.grid(axis='y', alpha=0.3)
+    
+    # 5. Precision vs Recall (Audio)
+    ax = axes[1, 1]
+    audio_precision = [audio_results[l]['precision'] for l in levels]
+    audio_recall = [audio_results[l]['recall'] for l in levels]
+    ax.bar(x - width/2, audio_precision, width, label='Precision', color='skyblue', alpha=0.8)
+    ax.bar(x + width/2, audio_recall, width, label='Recall', color='orange', alpha=0.8)
+    ax.set_ylabel('Score', fontweight='bold', fontsize=11)
+    ax.set_title('Audio: Precision vs Recall', fontweight='bold', fontsize=12)
+    ax.set_xticks(x)
+    ax.set_xticklabels(levels)
+    ax.legend()
+    ax.set_ylim([0, 1])
+    ax.grid(axis='y', alpha=0.3)
+    
+    # 6. Precision vs Recall (Clinical)
     ax = axes[1, 2]
-    speedups = [orig_time / results[l]['inference_time_ms'] for l in levels]
-    f1_degradations = [((orig_f1 - results[l]['fusion']['f1']) / orig_f1 * 100) if l != 'original' else 0 for l in levels]
-    ax.scatter(speedups, f1_degradations, s=300, c=colors, edgecolors='black', linewidth=2)
-    for i, level in enumerate(levels):
-        ax.annotate(level, (speedups[i], f1_degradations[i]), xytext=(5, 5), textcoords='offset points', fontweight='bold')
-    ax.set_xlabel('Speedup Factor', fontweight='bold')
-    ax.set_ylabel('F1 Degradation %', fontweight='bold')
-    ax.set_title('Trade-off: Speedup vs Performance', fontweight='bold')
-    ax.grid(True, alpha=0.3)
+    clinical_precision = [clinical_results[l]['precision'] for l in levels]
+    clinical_recall = [clinical_results[l]['recall'] for l in levels]
+    ax.bar(x - width/2, clinical_precision, width, label='Precision', color='skyblue', alpha=0.8)
+    ax.bar(x + width/2, clinical_recall, width, label='Recall', color='orange', alpha=0.8)
+    ax.set_ylabel('Score', fontweight='bold', fontsize=11)
+    ax.set_title('Clinical: Precision vs Recall', fontweight='bold', fontsize=12)
+    ax.set_xticks(x)
+    ax.set_xticklabels(levels)
+    ax.legend()
+    ax.set_ylim([0, 1])
+    ax.grid(axis='y', alpha=0.3)
     
-    plt.suptitle('TotoScreen Fusion Model Comprehensive Evaluation', fontsize=16, fontweight='bold')
+    plt.suptitle('TotoScreen: Pruning Comparison (Audio vs Clinical - Separate Evaluation)', fontsize=16, fontweight='bold')
     plt.tight_layout()
     
-    output_path = Path("fusion_evaluation.png")
+    output_path = Path("pruning_comparison.png")
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    print(f"[SUCCESS] Saved visualization to: {output_path}")
+    print(f"  ✓ Saved: {output_path}")
     
     plt.show()
     
     # Save detailed results
     import json
-    results_json = {}
-    for level, data in results.items():
-        results_json[level] = {
-            'audio': {k: float(v) if isinstance(v, (int, float, np.number)) else v 
-                     for k, v in data['audio'].items() if k != 'mean_pred' and k != 'std_pred'},
-            'clinical': {k: float(v) if isinstance(v, (int, float, np.number)) else v 
-                        for k, v in data['clinical'].items() if k != 'mean_pred' and k != 'std_pred'},
-            'fusion': {k: float(v) if isinstance(v, (int, float, np.number)) else v 
-                      for k, v in data['fusion'].items() if k != 'mean_pred' and k != 'std_pred'},
-            'inference_time_ms': float(data['inference_time_ms'])
+    results_json = {
+        'audio': {
+            level: {
+                'accuracy': float(v['accuracy']),
+                'precision': float(v['precision']),
+                'recall': float(v['recall']),
+                'f1': float(v['f1']),
+                'auc': float(v['auc']),
+                'inference_time_ms': float(v['inference_time_ms'])
+            }
+            for level, v in audio_results.items()
+        },
+        'clinical': {
+            level: {
+                'accuracy': float(v['accuracy']),
+                'precision': float(v['precision']),
+                'recall': float(v['recall']),
+                'f1': float(v['f1']),
+                'auc': float(v['auc']),
+                'inference_time_ms': float(v['inference_time_ms'])
+            }
+            for level, v in clinical_results.items()
         }
+    }
     
-    json_path = Path("fusion_evaluation_results.json")
+    json_path = Path("pruning_evaluation_results.json")
     with open(json_path, 'w') as f:
         json.dump(results_json, f, indent=2)
     
-    print(f"[SUCCESS] Saved detailed results to: {json_path}")
+    print(f"  ✓ Saved: {json_path}")
     
-    print("\n" + "=" * 70)
-    print("[CONCLUSION]")
-    print("=" * 70)
-    print("\nRecommendation based on comprehensive evaluation:")
-    print("\n- Light Pruning: Best for accuracy-critical production")
-    print("- Medium Pruning: Recommended balanced approach")
-    print("- Aggressive Pruning: Only if latency is critical concern")
-    
-    print("\n" + "=" * 70)
+    print("\n" + "=" * 80)
+    print("[COMPLETE] Evaluation finished successfully")
+    print("=" * 80)
+    print("\nRecommendations:")
+    print("  AUDIO MODEL:    Light pruning recommended for production")
+    print("  CLINICAL MODEL: Light pruning recommended for production")
+    print("\n" + "=" * 80)
 
 if __name__ == "__main__":
     main()
